@@ -30,7 +30,7 @@ pipeline {
                     test -f frontend/nginx.conf
                     test -f "$DEPLOY_DIR/.env"
 
-                    echo "Project files and deployment environment verified."
+                    echo "Project files verified successfully."
                 '''
             }
         }
@@ -40,14 +40,21 @@ pipeline {
                 sh '''
                     set -e
 
-                    rsync -a --delete \
+                    rsync -r --delete \
+                      --omit-dir-times \
+                      --no-perms \
+                      --no-owner \
+                      --no-group \
                       --exclude='.git/' \
                       --exclude='.env' \
                       --exclude='__pycache__/' \
                       --exclude='*.pyc' \
+                      --exclude='node_modules/' \
+                      --exclude='build/' \
+                      --exclude='venv/' \
                       "$WORKSPACE/" "$DEPLOY_DIR/"
 
-                    echo "Latest source code copied."
+                    echo "Latest code copied successfully."
                 '''
             }
         }
@@ -57,7 +64,10 @@ pipeline {
                 dir('/home/ubuntu/full-stack-fastapi-react-postgres') {
                     sh '''
                         set -e
+
                         docker compose build backend frontend
+
+                        echo "Docker images built successfully."
                     '''
                 }
             }
@@ -68,7 +78,10 @@ pipeline {
                 dir('/home/ubuntu/full-stack-fastapi-react-postgres') {
                     sh '''
                         set -e
+
                         docker compose up -d --remove-orphans
+
+                        echo "Application containers deployed."
                     '''
                 }
             }
@@ -79,15 +92,18 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "Waiting for application..."
+                    echo "Waiting for application startup..."
                     sleep 15
 
                     docker compose -f "$DEPLOY_DIR/docker-compose.yml" ps
 
+                    echo "Checking frontend..."
                     curl -fsS "$APP_URL/" > /dev/null
+
+                    echo "Checking backend API..."
                     curl -fsS "$APP_URL/api/docs" > /dev/null
 
-                    echo "Application deployment successful."
+                    echo "Frontend and backend are responding successfully."
                 '''
             }
         }
@@ -95,16 +111,24 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Application deployed successfully!'
+            echo 'SUCCESS: Notes & Checklists application deployed!'
+            echo 'Application URL: http://98.93.142.48'
         }
 
         failure {
-            echo 'FAILED: Deployment failed. Checking container logs.'
+            echo 'FAILED: Deployment pipeline encountered an error.'
 
             sh '''
                 docker compose -f "$DEPLOY_DIR/docker-compose.yml" \
+                  ps || true
+
+                docker compose -f "$DEPLOY_DIR/docker-compose.yml" \
                   logs --tail=50 || true
             '''
+        }
+
+        always {
+            echo 'Jenkins pipeline execution completed.'
         }
     }
 }
